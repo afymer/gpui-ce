@@ -49,6 +49,8 @@ pub struct EditableTextState {
 
     /// True while a mouse selection is in progress.
     is_selecting: bool,
+    mouse_anchor: Option<CaretPosition>,
+    mouse_caret: Option<(CaretSelection, CaretPosition)>,
     /// Last click's position relative to this element, used to match nearby clicks.
     last_click_position: Option<Point<Pixels>>,
     /// Count of consecutive nearby clicks, used to choose single, double, or triple-click behavior.
@@ -141,6 +143,8 @@ impl EditableTextState {
             marked_range: None,
 
             is_selecting: false,
+            mouse_anchor: None,
+            mouse_caret: None,
             last_click_position: None,
             click_count: 0,
 
@@ -215,12 +219,20 @@ impl EditableTextState {
     fn clear_selection(&mut self, cx: &mut Context<Self>) {
         self.set_selection(self.caret());
         self.is_selecting = false;
+        self.mouse_anchor = None;
+        self.mouse_caret = None;
         self.last_click_position = None;
         self.click_count = 0;
 
         cx.notify();
     }
 
+    pub(super) fn visible_caret(&self) -> CaretPosition {
+        match self.mouse_caret {
+            Some((selection, caret)) if selection == self.selection.result => caret,
+            _ => self.caret(),
+        }
+    }
     /// Returns the IME marked range for character operations.
     pub(super) fn marked_range(&self) -> Option<Range<usize>> {
         self.marked_range.clone()
@@ -407,6 +419,46 @@ impl EditableTextState {
         self.caret_for_pixel_point(point, line_height).index
     }
 
+    fn mouse_selection_endpoint(
+        &self,
+        endpoint: CaretPosition,
+        opposite: CaretPosition,
+    ) -> CaretPosition {
+        let Ok(document) = self.current_document() else {
+            return endpoint;
+        };
+
+        let line_height = self.layout_data.line_height;
+        let Some(endpoint_point) = document.visual_position_for_caret(endpoint, line_height) else {
+            return endpoint;
+        };
+        let Some(opposite_point) = document.visual_position_for_caret(opposite, line_height) else {
+            return endpoint;
+        };
+
+        let (edge, opposite_edge) = if opposite_point.y > endpoint_point.y {
+            (
+                Direction::End.with_boundary(TextBoundary::VisualLine),
+                Direction::Start.with_boundary(TextBoundary::VisualLine),
+            )
+        } else if opposite_point.y < endpoint_point.y {
+            (
+                Direction::Start.with_boundary(TextBoundary::VisualLine),
+                Direction::End.with_boundary(TextBoundary::VisualLine),
+            )
+        } else {
+            return endpoint;
+        };
+
+        if document.caret_movement(endpoint, edge, None).result.index != endpoint.index {
+            return endpoint;
+        }
+
+        document
+            .caret_movement(endpoint, opposite_edge, None)
+            .result
+    }
+
     fn find_point_for_caret(&self, caret: CaretPosition) -> Point<Pixels> {
         self.point_for_caret(caret).unwrap_or_default()
     }
@@ -475,7 +527,7 @@ impl EditableTextState {
         };
 
         // point will be relative to content_size, and may or may not be within the current scroll_bounds
-        let point = self.find_point_for_caret(self.caret());
+        let point = self.find_point_for_caret(self.visible_caret());
 
         // this scroll_offset diverges from the rest of gpui, as it is stored in the
         // positive real number space (interactivity stores it in the negatives)
@@ -1240,33 +1292,32 @@ impl<'app> EditableTextActionHandler<Context<'app, Self>> for EditableTextState 
         &mut self,
         event: &gpui::MouseDownEvent,
         text_position: Point<Pixels>,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<'app, Self>,
     ) {
         const DOUBLE_CLICK: usize = 2;
         const TRIPLE_CLICK: usize = 3;
 
-        let caret = self.caret_for_pixel_point(text_position, window.line_height());
+        let line_height = self.layout_data.line_height;
+        let caret = self.caret_for_pixel_point(text_position, line_height);
 
         self.is_selecting = true;
+        self.mouse_caret = None;
         self.apply_click(event.click_count, text_position);
 
         match self.click_count {
-            DOUBLE_CLICK => self.select_group_at(
-                text_position,
-                window.line_height(),
-                SelectionGroup::Word,
-                cx,
-            ),
-            TRIPLE_CLICK => self.select_group_at(
-                text_position,
-                window.line_height(),
-                SelectionGroup::Line,
-                cx,
-            ),
+            DOUBLE_CLICK => {
+                self.select_group_at(text_position, line_height, SelectionGroup::Word, cx)
+            }
+            TRIPLE_CLICK => {
+                self.select_group_at(text_position, line_height, SelectionGroup::Line, cx)
+            }
             _ if event.modifiers.shift => self.select_to_caret(caret, cx),
             _ => self.move_to_caret(caret, cx),
         }
+
+        self.mouse_anchor = (self.click_count == 1 && !event.modifiers.shift)
+            .then_some(self.selection.result.anchor);
     }
 
     fn on_mouse_up(
@@ -1276,17 +1327,27 @@ impl<'app> EditableTextActionHandler<Context<'app, Self>> for EditableTextState 
         _cx: &mut Context<'app, Self>,
     ) {
         self.is_selecting = false;
+        self.mouse_anchor = None;
     }
 
     fn on_mouse_move(
         &mut self,
         _event: &gpui::MouseMoveEvent,
         text_position: Point<Pixels>,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<'app, Self>,
     ) {
         if self.is_selecting && self.click_count == 1 {
-            let caret = self.caret_for_pixel_point(text_position, window.line_height());
+            let mouse_caret =
+                self.caret_for_pixel_point(text_position, self.layout_data.line_height);
+            let mut caret = mouse_caret;
+
+            if let Some(anchor) = self.mouse_anchor {
+                self.selection.result.anchor = self.mouse_selection_endpoint(anchor, caret);
+                caret = self.mouse_selection_endpoint(caret, anchor);
+            }
+
+            self.mouse_caret = Some((self.selection.result.with_caret(caret), mouse_caret));
             self.select_to_caret(caret, cx);
         }
     }
