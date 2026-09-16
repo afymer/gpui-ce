@@ -9,7 +9,11 @@ use gpui::{
     TextMovement, TextRangeExt, TextSelectionKind, UTF16Selection, Window, WrappedLine, point,
     utf16_to_utf8_offset,
 };
-use std::{borrow::Cow, ops::Range};
+use std::{
+    borrow::Cow,
+    cell::{Ref, RefCell},
+    ops::Range,
+};
 
 const CARET_PIXELS_EPSILON: Pixels = gpui::px(4.);
 
@@ -70,6 +74,8 @@ pub struct EditableTextState {
     focus_handle: FocusHandle,
     blur_subscription: Option<Subscription>,
     history: Option<EditableTextHistory>,
+
+    accessibility_text_metrics: RefCell<Option<AccessibilityTextMetrics>>,
 
     pub(super) layout_data: EditableTextLayoutResult,
 }
@@ -163,6 +169,7 @@ impl EditableTextState {
             blur_subscription: None,
             // TODO: what is the best way to give users access to configure this via element
             history: Some(EditableTextHistory::default()),
+            accessibility_text_metrics: RefCell::default(),
 
             layout_data: EditableTextLayoutResult::default(),
         }
@@ -251,18 +258,35 @@ impl EditableTextState {
         self.marked_range.clone()
     }
 
-    pub(super) fn accessibility_text_metrics(&self) -> AccessibilityTextMetrics {
-        AccessibilityTextMetrics::new(self.as_str())
+    pub(super) fn accessibility_text_metrics(&self) -> Ref<'_, AccessibilityTextMetrics> {
+        let version = self.storage.version();
+        let metrics_are_current = self
+            .accessibility_text_metrics
+            .borrow()
+            .as_ref()
+            .is_some_and(|metrics| metrics.version == version);
+
+        if !metrics_are_current {
+            *self.accessibility_text_metrics.borrow_mut() =
+                Some(AccessibilityTextMetrics::new(self.as_str(), version));
+        }
+
+        Ref::map(self.accessibility_text_metrics.borrow(), |metrics| {
+            metrics
+                .as_ref()
+                .expect("accessibility text metrics were prepared above")
+        })
     }
 }
 
 pub(super) struct AccessibilityTextMetrics {
+    version: u16,
     pub(super) character_lengths: Vec<u8>,
     byte_offsets: Vec<usize>,
 }
 
 impl AccessibilityTextMetrics {
-    fn new(text: &str) -> Self {
+    fn new(text: &str, version: u16) -> Self {
         let mut byte_offsets = text
             .char_indices()
             .map(|(offset, _)| offset)
@@ -271,6 +295,7 @@ impl AccessibilityTextMetrics {
         byte_offsets.push(text.len());
 
         Self {
+            version,
             character_lengths: text
                 .chars()
                 .map(|character| character.len_utf8() as u8)
@@ -1399,7 +1424,7 @@ mod tests {
     #[test]
     fn accessibility_selection_uses_character_indices_and_preserves_direction() {
         let text = "A😀日本B";
-        let metrics = AccessibilityTextMetrics::new(text);
+        let metrics = AccessibilityTextMetrics::new(text, 0);
         let start = 1;
         let end = "A😀日本".len();
         let forward = CaretSelection {
