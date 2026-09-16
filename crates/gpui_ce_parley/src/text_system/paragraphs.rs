@@ -62,7 +62,6 @@ pub(super) struct ParagraphLayout {
     pub block_offset: Pixels,
     pub native: Arc<dyn PlatformTextLayout>,
     pub newline: Range<Pixels>,
-    pub is_rtl: bool,
 }
 
 impl ParagraphLayout {
@@ -179,28 +178,31 @@ impl PlatformTextLayout for ParleyDocumentLayout {
 
     fn byte_index_from_pixel_point(
         &self,
-        position: Point<Pixels>,
+        pixel_point: Point<Pixels>,
         line_height: Pixels,
     ) -> Result<usize, usize> {
-        let paragraph = self.paragraph_for_point(position, line_height);
+        let paragraph = self.paragraph_for_point(pixel_point, line_height);
 
         paragraph
             .native
-            .byte_index_from_pixel_point(paragraph.local_point(position, line_height), line_height)
+            .byte_index_from_pixel_point(
+                paragraph.local_point(pixel_point, line_height),
+                line_height,
+            )
             .map(|idx| idx + paragraph.source.content.start)
             .map_err(|idx| idx + paragraph.source.content.start)
     }
 
     fn caret_from_pixel_point(
         &self,
-        position: Point<Pixels>,
+        pixel_point: Point<Pixels>,
         line_height: Pixels,
     ) -> Result<CaretPosition, CaretPosition> {
-        let paragraph = self.paragraph_for_point(position, line_height);
+        let paragraph = self.paragraph_for_point(pixel_point, line_height);
 
         paragraph
             .native
-            .caret_from_pixel_point(paragraph.local_point(position, line_height), line_height)
+            .caret_from_pixel_point(paragraph.local_point(pixel_point, line_height), line_height)
             .map(|caret| paragraph.global_caret(caret))
             .map_err(|caret| paragraph.global_caret(caret))
     }
@@ -244,18 +246,22 @@ impl PlatformTextLayout for ParleyDocumentLayout {
             .or_else(|| self.adjacent_edge(paragraph_idx, direction))
     }
 
-    fn selection_bounds(&self, range: Range<usize>, line_height: Pixels) -> Vec<Bounds<Pixels>> {
+    fn selection_bounds(
+        &self,
+        byte_range: Range<usize>,
+        line_height: Pixels,
+    ) -> Vec<Bounds<Pixels>> {
         let mut regions = Vec::new();
 
         for paragraph in &self.paragraphs {
-            if let Some(local) = local_range(&range, &paragraph.source.content) {
+            if let Some(local) = local_range(&byte_range, &paragraph.source.content) {
                 for mut bounds in paragraph.native.selection_bounds(local, line_height) {
                     bounds.origin.y += line_height * paragraph.first_line;
                     regions.push(bounds);
                 }
             }
 
-            if local_range(&range, &paragraph.source.separator).is_none() {
+            if local_range(&byte_range, &paragraph.source.separator).is_none() {
                 continue;
             }
 
@@ -445,13 +451,13 @@ impl PlatformTextLayout for ParleyDocumentLayout {
 
     fn selection_from_pixel_point(
         &self,
-        position: Point<Pixels>,
+        pixel_point: Point<Pixels>,
         line_height: Pixels,
         kind: TextSelectionKind,
     ) -> Range<usize> {
-        let paragraph = self.paragraph_for_point(position, line_height);
+        let paragraph = self.paragraph_for_point(pixel_point, line_height);
         let local = paragraph.native.selection_from_pixel_point(
-            paragraph.local_point(position, line_height),
+            paragraph.local_point(pixel_point, line_height),
             line_height,
             kind,
         );
