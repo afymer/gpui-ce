@@ -160,20 +160,20 @@ pub fn align_inline_boxes(
         .collect::<Vec<_>>();
     let mut line_y = Pixels::ZERO;
 
-    for (line_idx, line) in lines.iter_mut().enumerate() {
+    for (line_index, line) in lines.iter_mut().enumerate() {
         let metrics = line_metrics
-            .get(line_idx)
+            .get(line_index)
             .copied()
             .unwrap_or(fallback_metrics);
         let (mut top, mut bottom) = text_bounds
-            .get(line_idx)
+            .get(line_index)
             .copied()
             .unwrap_or_else(|| base_inline_line_bounds(metrics, line_height));
         let mut top_box_height = Pixels::ZERO;
         let mut bottom_box_height = Pixels::ZERO;
 
         for (inline_box, placement) in boxes.iter().zip(&box_placements) {
-            if placement.line_index != Some(line_idx) {
+            if placement.line_index != Some(line_index) {
                 continue;
             }
 
@@ -195,7 +195,7 @@ pub fn align_inline_boxes(
         line.baseline = -top;
 
         for (inline_box, placement) in boxes.iter_mut().zip(&box_placements) {
-            if placement.line_index != Some(line_idx) {
+            if placement.line_index != Some(line_index) {
                 continue;
             }
 
