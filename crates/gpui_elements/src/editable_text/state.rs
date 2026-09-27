@@ -1565,7 +1565,13 @@ mod tests {
         view.update(cx, |view, window, cx| {
             view.input.update(cx, |input, cx| {
                 input.select_right(&SelectRight, window, cx);
-                assert_eq!(input.selected_range, (3..2).into());
+                assert_eq!(
+                    input.selected_range,
+                    CaretSelection {
+                        anchor: CaretPosition::attached_to_next_cluster(2),
+                        caret: CaretPosition::attached_to_next_cluster(3),
+                    }
+                );
             });
         })
         .unwrap();
@@ -1601,7 +1607,13 @@ mod tests {
         view.update(cx, |view, window, cx| {
             view.input.update(cx, |input, cx| {
                 input.select_end(&SelectDocumentEnd, window, cx);
-                assert_eq!(input.selected_range, (11..6).into());
+                assert_eq!(
+                    input.selected_range,
+                    CaretSelection {
+                        anchor: CaretPosition::attached_to_next_cluster(6),
+                        caret: CaretPosition::attached_to_next_cluster(11),
+                    }
+                );
             });
         })
         .unwrap();
@@ -1835,11 +1847,29 @@ mod tests {
         view.update(cx, |view, window, cx| {
             view.input.update(cx, |input, cx| {
                 input.select_right(&SelectRight, window, cx);
-                assert_eq!(input.selected_range, (3..0).into());
+                assert_eq!(
+                    input.selected_range,
+                    CaretSelection {
+                        anchor: CaretPosition::attached_to_next_cluster(0),
+                        caret: CaretPosition::attached_to_next_cluster(3),
+                    }
+                );
                 input.select_right(&SelectRight, window, cx);
-                assert_eq!(input.selected_range, (6..0).into());
+                assert_eq!(
+                    input.selected_range,
+                    CaretSelection {
+                        anchor: CaretPosition::attached_to_next_cluster(0),
+                        caret: CaretPosition::attached_to_next_cluster(6),
+                    }
+                );
                 input.select_right(&SelectRight, window, cx);
-                assert_eq!(input.selected_range, (9..0).into());
+                assert_eq!(
+                    input.selected_range,
+                    CaretSelection {
+                        anchor: CaretPosition::attached_to_next_cluster(0),
+                        caret: CaretPosition::attached_to_next_cluster(9),
+                    }
+                );
             });
         })
         .unwrap();
@@ -1927,7 +1957,13 @@ mod tests {
 
                 input.selected_range = 0.into();
                 input.select_to(1000, cx);
-                assert_eq!(input.selected_range, (5..0).into());
+                assert_eq!(
+                    input.selected_range,
+                    CaretSelection {
+                        anchor: CaretPosition::attached_to_next_cluster(0),
+                        caret: CaretPosition::attached_to_next_cluster(5),
+                    }
+                );
             });
         })
         .unwrap();
@@ -2160,7 +2196,13 @@ mod tests {
         view.update(cx, |view, window, cx| {
             view.input.update(cx, |input, cx| {
                 input.select_right(&SelectRight, window, cx);
-                assert_eq!(input.selected_range, (5..1).into()); // selected the entire emoji
+                assert_eq!(
+                    input.selected_range,
+                    CaretSelection {
+                        anchor: CaretPosition::attached_to_next_cluster(1),
+                        caret: CaretPosition::attached_to_next_cluster(5),
+                    }
+                ); // selected the entire emoji
             });
         })
         .unwrap();
@@ -2323,7 +2365,13 @@ mod tests {
         view.update(cx, |view, window, cx| {
             view.input.update(cx, |input, cx| {
                 input.select_down(&SelectDown, window, cx);
-                assert_eq!(input.selected_range, (11..5).into()); // "hello world".len() == 11
+                assert_eq!(
+                    input.selected_range,
+                    CaretSelection {
+                        anchor: CaretPosition::attached_to_next_cluster(5),
+                        caret: CaretPosition::attached_to_next_cluster(11),
+                    }
+                ); // "hello world".len() == 11
             });
         })
         .unwrap();
