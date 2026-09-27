@@ -2248,8 +2248,10 @@ mod tests {
             .unwrap_err();
         let mut steps = 0;
 
-        while let Some(next) = native.move_visual(caret, VisualDirection::Right) {
-            let previous = native.move_visual(next, VisualDirection::Left).unwrap();
+        while let Some(next) = native.adjacent_visual_caret(caret, VisualDirection::Right) {
+            let previous = native
+                .adjacent_visual_caret(next, VisualDirection::Left)
+                .unwrap();
             assert_eq!(
                 geometry(previous),
                 geometry(caret),
@@ -2308,10 +2310,19 @@ mod tests {
             assert_eq!(selected, source.content.start..source.separator.end);
 
             for (movement, expected) in [
-                (TextMovement::HardLineStart, source.content.start),
-                (TextMovement::HardLineEnd, source.content.end),
+                (
+                    Direction::Start.with_boundary(Boundary::HardLine),
+                    source.content.start,
+                ),
+                (
+                    Direction::End.with_boundary(Boundary::HardLine),
+                    source.content.end,
+                ),
             ] {
-                assert_eq!(native.move_caret(before, movement, None).0.index, expected);
+                assert_eq!(
+                    native.caret_movement(before, movement, None).caret.index,
+                    expected
+                );
             }
         }
 
@@ -2320,33 +2331,49 @@ mod tests {
         assert_eq!(native.normalized_caret(inside).index, crlf);
 
         let start = CaretPosition::default();
-        let (down, preferred_x) = native.move_caret(start, TextMovement::VisualDown, None);
+        let down = native.caret_movement(
+            start,
+            Direction::Down.with_boundary(Boundary::VisualLine),
+            None,
+        );
         assert_eq!(
-            geometry(down).origin.y,
+            geometry(down.caret).origin.y,
             geometry(start).origin.y + line_height
         );
-        assert_eq!(preferred_x, Some(geometry(start).origin.x));
+        assert_eq!(down.preferred_x, Some(geometry(start).origin.x));
 
         let mut vertical_caret = start;
         let mut preferred_x = None;
 
         for line_idx in 1..native.line_count() {
-            (vertical_caret, preferred_x) =
-                native.move_caret(vertical_caret, TextMovement::VisualDown, preferred_x);
+            let moved = native.caret_movement(
+                vertical_caret,
+                Direction::Down.with_boundary(Boundary::VisualLine),
+                preferred_x,
+            );
+            vertical_caret = moved.caret;
+            preferred_x = moved.preferred_x;
+
             assert_eq!(geometry(vertical_caret).origin.y, line_height * line_idx);
             assert_eq!(preferred_x, Some(geometry(start).origin.x));
         }
 
         for line_idx in (0..native.line_count() - 1).rev() {
-            (vertical_caret, preferred_x) =
-                native.move_caret(vertical_caret, TextMovement::VisualUp, preferred_x);
+            let moved = native.caret_movement(
+                vertical_caret,
+                Direction::Up.with_boundary(Boundary::VisualLine),
+                preferred_x,
+            );
+            vertical_caret = moved.caret;
+            preferred_x = moved.preferred_x;
+
             assert_eq!(geometry(vertical_caret).origin.y, line_height * line_idx);
         }
 
         for direction in [VisualDirection::Left, VisualDirection::Right] {
             let movement = match direction {
-                VisualDirection::Left => TextMovement::VisualWordLeft,
-                VisualDirection::Right => TextMovement::VisualWordRight,
+                VisualDirection::Left => Direction::Left.with_boundary(Boundary::Word),
+                VisualDirection::Right => Direction::Right.with_boundary(Boundary::Word),
             };
             let edge_x = match direction {
                 VisualDirection::Left => px(-100.),
@@ -2355,7 +2382,7 @@ mod tests {
             let empty_row = native
                 .caret_from_pixel_point(point(edge_x, line_height * 1.5), line_height)
                 .unwrap_or_else(|caret| caret);
-            let word = native.move_caret(empty_row, movement, None).0;
+            let word = native.caret_movement(empty_row, movement, None).caret;
             assert_ne!(geometry(word).origin.y, geometry(empty_row).origin.y);
         }
 

@@ -1036,7 +1036,7 @@ mod tests {
             let line_height = self.line_height();
             let local = self
                 .document()
-                .position_for_caret(caret, line_height)
+                .visual_position_for_caret(caret, line_height)
                 .unwrap();
 
             self.origin() + local + point(px(0.), line_height / 2.)
@@ -1092,7 +1092,9 @@ mod tests {
             let origin = self.origin();
             let document = self.document();
             let line_height = self.line_height();
-            let caret_point = document.position_for_caret(caret, line_height).unwrap();
+            let caret_point = document
+                .visual_position_for_caret(caret, line_height)
+                .unwrap();
             self.assert_quads(
                 CARET_COLOR,
                 vec![Bounds::new(origin + caret_point, size(px(2.), line_height))],
