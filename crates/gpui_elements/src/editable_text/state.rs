@@ -33,6 +33,14 @@ impl SelectionGroup {
 #[derive(Debug)]
 struct OldDocumentVersion;
 
+#[derive(Clone, Copy)]
+struct SelectionDragVisualCaret {
+    /// The selection state for which `position` is the displayed caret.
+    selection: CaretSelection,
+    /// The caret position directly under the pointer.
+    position: CaretPosition,
+}
+
 /// Internal state for an editable text element.
 pub struct EditableTextState {
     /// Backing text storage, usually `StringStorage`; custom storage can support long documents.
@@ -49,8 +57,10 @@ pub struct EditableTextState {
 
     /// True while a mouse selection is in progress.
     is_selecting: bool,
-    mouse_anchor: Option<CaretPosition>,
-    mouse_caret: Option<(CaretSelection, CaretPosition)>,
+    /// The anchor captured when a single-click selection drag begins.
+    selection_drag_anchor: Option<CaretPosition>,
+    /// The pointer-aligned caret for the current drag selection.
+    selection_drag_visual_caret: Option<SelectionDragVisualCaret>,
     /// Last click's position relative to this element, used to match nearby clicks.
     last_click_position: Option<Point<Pixels>>,
     /// Count of consecutive nearby clicks, used to choose single, double, or triple-click behavior.
@@ -143,8 +153,8 @@ impl EditableTextState {
             marked_range: None,
 
             is_selecting: false,
-            mouse_anchor: None,
-            mouse_caret: None,
+            selection_drag_anchor: None,
+            selection_drag_visual_caret: None,
             last_click_position: None,
             click_count: 0,
 
@@ -219,8 +229,8 @@ impl EditableTextState {
     fn clear_selection(&mut self, cx: &mut Context<Self>) {
         self.set_selection(self.caret());
         self.is_selecting = false;
-        self.mouse_anchor = None;
-        self.mouse_caret = None;
+        self.selection_drag_anchor = None;
+        self.selection_drag_visual_caret = None;
         self.last_click_position = None;
         self.click_count = 0;
 
@@ -228,8 +238,10 @@ impl EditableTextState {
     }
 
     pub(super) fn visible_caret(&self) -> CaretPosition {
-        match self.mouse_caret {
-            Some((selection, caret)) if selection == self.selection.result => caret,
+        match self.selection_drag_visual_caret {
+            Some(drag_caret) if drag_caret.selection == self.selection.result => {
+                drag_caret.position
+            }
             _ => self.caret(),
         }
     }
@@ -1302,7 +1314,7 @@ impl<'app> EditableTextActionHandler<Context<'app, Self>> for EditableTextState 
         let caret = self.caret_for_pixel_point(text_position, line_height);
 
         self.is_selecting = true;
-        self.mouse_caret = None;
+        self.selection_drag_visual_caret = None;
         self.apply_click(event.click_count, text_position);
 
         match self.click_count {
@@ -1316,7 +1328,7 @@ impl<'app> EditableTextActionHandler<Context<'app, Self>> for EditableTextState 
             _ => self.move_to_caret(caret, cx),
         }
 
-        self.mouse_anchor = (self.click_count == 1 && !event.modifiers.shift)
+        self.selection_drag_anchor = (self.click_count == 1 && !event.modifiers.shift)
             .then_some(self.selection.result.anchor);
     }
 
@@ -1327,7 +1339,7 @@ impl<'app> EditableTextActionHandler<Context<'app, Self>> for EditableTextState 
         _cx: &mut Context<'app, Self>,
     ) {
         self.is_selecting = false;
-        self.mouse_anchor = None;
+        self.selection_drag_anchor = None;
     }
 
     fn on_mouse_move(
@@ -1342,12 +1354,15 @@ impl<'app> EditableTextActionHandler<Context<'app, Self>> for EditableTextState 
                 self.caret_for_pixel_point(text_position, self.layout_data.line_height);
             let mut caret = mouse_caret;
 
-            if let Some(anchor) = self.mouse_anchor {
+            if let Some(anchor) = self.selection_drag_anchor {
                 self.selection.result.anchor = self.mouse_selection_endpoint(anchor, caret);
                 caret = self.mouse_selection_endpoint(caret, anchor);
             }
 
-            self.mouse_caret = Some((self.selection.result.with_caret(caret), mouse_caret));
+            self.selection_drag_visual_caret = Some(SelectionDragVisualCaret {
+                selection: self.selection.result.with_caret(caret),
+                position: mouse_caret,
+            });
             self.select_to_caret(caret, cx);
         }
     }
