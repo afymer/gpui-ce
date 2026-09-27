@@ -19,8 +19,8 @@ use core_text::{
     font_descriptor::{self, CTFontDescriptor, kCTFontOrientationDefault},
 };
 use gpui::{
-    Bounds, DevicePixels, GlyphRenderMode, PreparedRasterStyle, RasterColorEffect,
-    RasterStyleRequest, RasterizedGlyph, RasterizedGlyphFormat, RenderGlyphParams, Rgba8,
+    Bounds, DevicePixels, GlyphRenderMode, PreparedRasterStyle, RasterColorEffect, RasterColorExt,
+    RasterStyleRequest, RasterizedGlyph, RasterizedGlyphFormat, RenderGlyphParams,
     SUBPIXEL_VARIANTS_X, SUBPIXEL_VARIANTS_Y, TextRenderingMode, point, size,
 };
 use gpui_parley::{GlyphRasterizer, RasterFace};
@@ -204,7 +204,9 @@ impl GlyphRasterizer for MacGlyphRasterizer {
         if request.requested_mode == GlyphRenderMode::Color {
             return PreparedRasterStyle {
                 mode: GlyphRenderMode::Color,
-                color_effect: RasterColorEffect::Preblend(request.scene_color.into()),
+                color_effect: RasterColorEffect::Preblend(
+                    request.scene_color.quantize_raster_color(),
+                ),
             };
         }
 
@@ -315,13 +317,9 @@ fn configure_context(
             context.set_gray_fill_color(luminance, 1.0);
             context.set_rgb_stroke_color(luminance, luminance, luminance, 1.0);
         }
-        RasterColorEffect::Preblend(Rgba8 {
-            red,
-            green,
-            blue,
-            alpha,
-        }) => {
-            let [red, green, blue, alpha] = [red, green, blue, alpha].map(|c| f64::from(c) / 255.0);
+        RasterColorEffect::Preblend(color) => {
+            let [red, green, blue, alpha] =
+                <[u8; 4]>::from(color).map(|channel| f64::from(channel) / 255.0);
             context.set_rgb_fill_color(red, green, blue, alpha);
             context.set_rgb_stroke_color(red, green, blue, alpha);
         }
