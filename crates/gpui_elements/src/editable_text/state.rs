@@ -47,9 +47,9 @@ pub struct EditableTextState {
     storage: Box<dyn UnicodeTextStorage>,
 
     /// This input's affinity-aware selection and horizontal coordinate retained during vertical
-    /// navigation. The caret is the cursor, and the anchor remains fixed while extending the
-    /// selection. The coordinate is measured from the layout's left edge and is reset by operations
-    /// other than consecutive vertical movements.
+    /// navigation. Its caret is the cursor; its anchor stays fixed during ordinary extension but
+    /// may shift at a visual-line edge while dragging. The coordinate is measured from the layout's
+    /// left edge and is reset by operations other than consecutive vertical movements.
     selection: CaretSelectionMovement,
 
     /// UTF-8 byte range in `storage` under IME composition.
@@ -57,7 +57,8 @@ pub struct EditableTextState {
 
     /// True while a mouse selection is in progress.
     is_selecting: bool,
-    /// The anchor captured when a single-click selection drag begins.
+    /// Caret captured at single-click drag start. Reused by `mouse_selection_endpoint`
+    /// because edge handling can shift `selection.result.anchor`.
     selection_drag_anchor: Option<CaretPosition>,
     /// The pointer-aligned caret for the current drag selection.
     selection_drag_visual_caret: Option<SelectionDragVisualCaret>,
