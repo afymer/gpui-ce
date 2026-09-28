@@ -488,7 +488,7 @@ impl PlatformTextLayout for ParleyLayout {
         &self,
         caret: CaretPosition,
         movement: TextMovement,
-        preferred_x: Option<Pixels>,
+        vertical_navigation_x: Option<Pixels>,
     ) -> CaretMovement {
         let cursor = self.cursor(caret);
         let moved = match (movement.direction, movement.boundary) {
@@ -551,11 +551,11 @@ impl PlatformTextLayout for ParleyLayout {
                     };
                     return CaretMovement {
                         result: Self::caret_position(moved.focus()),
-                        vertical_navigation_x: preferred_x,
+                        vertical_navigation_x,
                     };
                 };
 
-                let x = preferred_x
+                let x = vertical_navigation_x
                     .map_or_else(|| cursor.geometry(&self.layout, 0.0).x0 as f32, f32::from);
                 let moved =
                     Cursor::from_point(&self.layout, x, self.native_y_for_line(target_index));
@@ -2320,7 +2320,7 @@ mod tests {
                 ),
             ] {
                 assert_eq!(
-                    native.caret_movement(before, movement, None).caret.index,
+                    native.caret_movement(before, movement, None).result.index,
                     expected
                 );
             }
@@ -2337,37 +2337,37 @@ mod tests {
             None,
         );
         assert_eq!(
-            geometry(down.caret).origin.y,
+            geometry(down.result).origin.y,
             geometry(start).origin.y + line_height
         );
-        assert_eq!(down.preferred_x, Some(geometry(start).origin.x));
+        assert_eq!(down.vertical_navigation_x, Some(geometry(start).origin.x));
 
         let mut vertical_caret = start;
-        let mut preferred_x = None;
+        let mut vertical_navigation_x = None;
 
-        for line_idx in 1..native.line_count() {
+        for line_index in 1..native.line_count() {
             let moved = native.caret_movement(
                 vertical_caret,
                 Direction::Down.with_boundary(Boundary::VisualLine),
-                preferred_x,
+                vertical_navigation_x,
             );
-            vertical_caret = moved.caret;
-            preferred_x = moved.preferred_x;
+            vertical_caret = moved.result;
+            vertical_navigation_x = moved.vertical_navigation_x;
 
-            assert_eq!(geometry(vertical_caret).origin.y, line_height * line_idx);
-            assert_eq!(preferred_x, Some(geometry(start).origin.x));
+            assert_eq!(geometry(vertical_caret).origin.y, line_height * line_index);
+            assert_eq!(vertical_navigation_x, Some(geometry(start).origin.x));
         }
 
-        for line_idx in (0..native.line_count() - 1).rev() {
+        for line_index in (0..native.line_count() - 1).rev() {
             let moved = native.caret_movement(
                 vertical_caret,
                 Direction::Up.with_boundary(Boundary::VisualLine),
-                preferred_x,
+                vertical_navigation_x,
             );
-            vertical_caret = moved.caret;
-            preferred_x = moved.preferred_x;
+            vertical_caret = moved.result;
+            vertical_navigation_x = moved.vertical_navigation_x;
 
-            assert_eq!(geometry(vertical_caret).origin.y, line_height * line_idx);
+            assert_eq!(geometry(vertical_caret).origin.y, line_height * line_index);
         }
 
         for direction in [VisualDirection::Left, VisualDirection::Right] {
@@ -2382,7 +2382,7 @@ mod tests {
             let empty_row = native
                 .caret_from_pixel_point(point(edge_x, line_height * 1.5), line_height)
                 .unwrap_or_else(|caret| caret);
-            let word = native.caret_movement(empty_row, movement, None).caret;
+            let word = native.caret_movement(empty_row, movement, None).result;
             assert_ne!(geometry(word).origin.y, geometry(empty_row).origin.y);
         }
 

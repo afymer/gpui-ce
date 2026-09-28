@@ -310,7 +310,7 @@ impl PlatformTextLayout for ParleyDocumentLayout {
         &self,
         caret: CaretPosition,
         movement: TextMovement,
-        preferred_x: Option<Pixels>,
+        vertical_navigation_x: Option<Pixels>,
     ) -> CaretMovement {
         let caret = self.normalized_caret(caret);
         let direction = match movement.direction {
@@ -322,10 +322,10 @@ impl PlatformTextLayout for ParleyDocumentLayout {
         if movement.boundary == Boundary::Cluster {
             if let Some(direction) = direction {
                 return CaretMovement {
-                    caret: self
+                    result: self
                         .adjacent_visual_caret(caret, direction)
                         .unwrap_or(caret),
-                    preferred_x: None,
+                    vertical_navigation_x: None,
                 };
             }
         }
@@ -338,8 +338,8 @@ impl PlatformTextLayout for ParleyDocumentLayout {
             };
 
             return CaretMovement {
-                caret: self.normalized_caret(caret),
-                preferred_x: None,
+                result: self.normalized_caret(caret),
+                vertical_navigation_x: None,
             };
         }
 
@@ -352,55 +352,55 @@ impl PlatformTextLayout for ParleyDocumentLayout {
             } else {
                 1
             };
-            let target_idx = (f32::from(geometry.origin.y) as usize)
+            let target_index = (f32::from(geometry.origin.y) as usize)
                 .checked_add_signed(delta)
-                .filter(|idx| *idx < self.line_count());
-            let Some(target_idx) = target_idx else {
-                let idx = if delta < 0 { 0 } else { self.len() };
+                .filter(|index| *index < self.line_count());
+            let Some(target_index) = target_index else {
+                let index = if delta < 0 { 0 } else { self.len() };
 
                 return CaretMovement {
-                    caret: self.normalized_caret(CaretPosition {
-                        index: idx,
+                    result: self.normalized_caret(CaretPosition {
+                        index,
                         affinity: caret.affinity,
                     }),
-                    preferred_x,
+                    vertical_navigation_x,
                 };
             };
-            let x = preferred_x.unwrap_or(geometry.origin.x);
+            let x = vertical_navigation_x.unwrap_or(geometry.origin.x);
             let moved = self
-                .caret_from_pixel_point(point(x, px(target_idx as f32 + 0.5)), px(1.0))
+                .caret_from_pixel_point(point(x, px(target_index as f32 + 0.5)), px(1.0))
                 .unwrap_or_else(|caret| caret);
 
             return CaretMovement {
-                caret: moved,
-                preferred_x: Some(x),
+                result: moved,
+                vertical_navigation_x: Some(x),
             };
         }
 
-        let paragraph_idx = self.paragraph_for_index(caret.index);
-        let paragraph = &self.paragraphs[paragraph_idx];
+        let paragraph_index = self.paragraph_for_index(caret.index);
+        let paragraph = &self.paragraphs[paragraph_index];
         let local = paragraph.local_caret(caret);
         let CaretMovement {
-            caret: moved,
-            preferred_x,
+            result: moved,
+            vertical_navigation_x,
         } = paragraph
             .native
-            .caret_movement(local, movement, preferred_x);
+            .caret_movement(local, movement, vertical_navigation_x);
 
         if let Some(direction) = direction
             && paragraph.native.caret_bounds(moved, px(1.0))
                 == paragraph.native.caret_bounds(local, px(1.0))
-            && let Some(edge) = self.adjacent_edge(paragraph_idx, direction)
+            && let Some(edge) = self.adjacent_edge(paragraph_index, direction)
         {
             return CaretMovement {
-                caret: edge,
-                preferred_x,
+                result: edge,
+                vertical_navigation_x,
             };
         }
 
         CaretMovement {
-            caret: paragraph.global_caret(moved),
-            preferred_x,
+            result: paragraph.global_caret(moved),
+            vertical_navigation_x,
         }
     }
 
