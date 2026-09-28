@@ -351,7 +351,7 @@ fn paint_visual_text(
         let padding_top = (line_height - layout.ascent - layout.descent) / 2.;
         let text_system = cx.text_system().clone();
 
-        for (line_idx, line) in visual_lines.iter().enumerate() {
+        for (line_index, line) in visual_lines.iter().enumerate() {
             let line_origin = point(
                 aligned_visual_origin_x(
                     origin.x,
@@ -359,7 +359,7 @@ fn paint_visual_text(
                     line.advance_width,
                     align,
                 ),
-                origin.y + line_idx as f32 * line_height,
+                origin.y + line_index as f32 * line_height,
             );
             paint_visual_line(
                 layout,
@@ -401,7 +401,7 @@ fn paint_visual_background(
     window.paint_layer(line_bounds, |window| {
         let padding_top = (line_height - layout.ascent - layout.descent) / 2.;
         let text_system = cx.text_system().clone();
-        for (line_idx, line) in visual_lines.iter().enumerate() {
+        for (line_index, line) in visual_lines.iter().enumerate() {
             let line_origin = point(
                 aligned_visual_origin_x(
                     origin.x,
@@ -409,7 +409,7 @@ fn paint_visual_background(
                     line.advance_width,
                     align,
                 ),
-                origin.y + line_idx as f32 * line_height,
+                origin.y + line_index as f32 * line_height,
             );
             paint_visual_line(
                 layout,

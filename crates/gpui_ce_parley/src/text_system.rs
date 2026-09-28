@@ -241,9 +241,9 @@ impl ParleyLayout {
         }
     }
 
-    fn native_y_for_line(&self, line_idx: usize) -> f32 {
+    fn native_y_for_line(&self, line_index: usize) -> f32 {
         self.layout
-            .get(line_idx)
+            .get(line_index)
             .map(|line| {
                 let metrics = line.metrics();
                 (metrics.block_min_coord + metrics.block_max_coord) * 0.5
@@ -277,8 +277,8 @@ impl PlatformTextLayout for ParleyLayout {
         if pixel_point.y < Pixels::ZERO || line_height <= Pixels::ZERO {
             return Err(closest);
         }
-        let line_ix = (pixel_point.y / line_height) as usize;
-        let Some(line) = self.layout.get(line_ix) else {
+        let line_index = (pixel_point.y / line_height) as usize;
+        let Some(line) = self.layout.get(line_index) else {
             return Err(closest);
         };
 
@@ -292,7 +292,7 @@ impl PlatformTextLayout for ParleyLayout {
         Cluster::from_point(
             &self.layout,
             pixel_point.x.into(),
-            self.native_y_for_line(line_ix),
+            self.native_y_for_line(line_index),
         )
         .map(|(cluster, _)| cluster.text_range().start)
         .ok_or(closest)
@@ -303,7 +303,7 @@ impl PlatformTextLayout for ParleyLayout {
         pixel_point: gpui::Point<Pixels>,
         line_height: Pixels,
     ) -> std::result::Result<CaretPosition, CaretPosition> {
-        let line_ix = if line_height > px(0.0) && pixel_point.y >= Pixels::ZERO {
+        let line_index = if line_height > px(0.0) && pixel_point.y >= Pixels::ZERO {
             (pixel_point.y / line_height) as usize
         } else {
             0
@@ -312,9 +312,9 @@ impl PlatformTextLayout for ParleyLayout {
         let caret = Self::caret_position(Cursor::from_point(
             &self.layout,
             pixel_point.x.into(),
-            self.native_y_for_line(line_ix),
+            self.native_y_for_line(line_index),
         ));
-        let Some(line) = self.layout.get(line_ix) else {
+        let Some(line) = self.layout.get(line_index) else {
             return Err(caret);
         };
 
@@ -339,7 +339,7 @@ impl PlatformTextLayout for ParleyLayout {
 
         let cursor = self.cursor(caret);
         let geometry = cursor.geometry(&self.layout, 0.0);
-        let line_ix = self
+        let line_index = self
             .layout
             .lines()
             .position(|line| {
@@ -349,8 +349,8 @@ impl PlatformTextLayout for ParleyLayout {
             })
             .unwrap_or_else(|| self.layout.len().saturating_sub(1));
         Some(Bounds::from_corners(
-            point(px(geometry.x0 as f32), line_height * line_ix),
-            point(px(geometry.x1 as f32), line_height * (line_ix + 1)),
+            point(px(geometry.x0 as f32), line_height * line_index),
+            point(px(geometry.x1 as f32), line_height * (line_index + 1)),
         ))
     }
 
@@ -390,10 +390,10 @@ impl PlatformTextLayout for ParleyLayout {
         Selection::new(anchor, focus)
             .geometry(&self.layout)
             .into_iter()
-            .map(|(geometry, line_idx)| {
+            .map(|(geometry, line_index)| {
                 Bounds::from_corners(
-                    point(px(geometry.x0 as f32), line_height * line_idx),
-                    point(px(geometry.x1 as f32), line_height * (line_idx + 1)),
+                    point(px(geometry.x0 as f32), line_height * line_index),
+                    point(px(geometry.x1 as f32), line_height * (line_index + 1)),
                 )
             })
             .collect()
@@ -464,18 +464,18 @@ impl PlatformTextLayout for ParleyLayout {
         let moved = match (movement.direction, movement.boundary) {
             (Direction::Left, Boundary::Cluster) => {
                 return CaretMovement {
-                    caret: self
+                    result: self
                         .adjacent_visual_caret(caret, VisualDirection::Left)
                         .unwrap_or(caret),
-                    preferred_x: None,
+                    vertical_navigation_x: None,
                 };
             }
             (Direction::Right, Boundary::Cluster) => {
                 return CaretMovement {
-                    caret: self
+                    result: self
                         .adjacent_visual_caret(caret, VisualDirection::Right)
                         .unwrap_or(caret),
-                    preferred_x: None,
+                    vertical_navigation_x: None,
                 };
             }
             (Direction::Left, Boundary::Word) => cursor.previous_visual_word(&self.layout),
@@ -500,7 +500,7 @@ impl PlatformTextLayout for ParleyLayout {
                 };
 
                 let geometry = cursor.geometry(&self.layout, 0.0);
-                let line_ix = self
+                let line_index = self
                     .layout
                     .lines()
                     .position(|line| {
@@ -509,10 +509,10 @@ impl PlatformTextLayout for ParleyLayout {
                             && (geometry.y0 as f32) < metrics.block_max_coord
                     })
                     .unwrap_or_else(|| self.layout.len().saturating_sub(1));
-                let target_ix = line_ix
+                let target_index = line_index
                     .checked_add_signed(delta)
-                    .filter(|&target_ix| self.layout.get(target_ix).is_some());
-                let Some(target_ix) = target_ix else {
+                    .filter(|&target_index| self.layout.get(target_index).is_some());
+                let Some(target_index) = target_index else {
                     let selection = Selection::from(cursor);
                     let moved = if delta < 0 {
                         selection.previous_line(&self.layout, false)
@@ -520,24 +520,25 @@ impl PlatformTextLayout for ParleyLayout {
                         selection.next_line(&self.layout, false)
                     };
                     return CaretMovement {
-                        caret: Self::caret_position(moved.focus()),
-                        preferred_x,
+                        result: Self::caret_position(moved.focus()),
+                        vertical_navigation_x: preferred_x,
                     };
                 };
 
                 let x = preferred_x
                     .map_or_else(|| cursor.geometry(&self.layout, 0.0).x0 as f32, f32::from);
-                let moved = Cursor::from_point(&self.layout, x, self.native_y_for_line(target_ix));
+                let moved =
+                    Cursor::from_point(&self.layout, x, self.native_y_for_line(target_index));
                 return CaretMovement {
-                    caret: Self::caret_position(moved),
-                    preferred_x: Some(px(x)),
+                    result: Self::caret_position(moved),
+                    vertical_navigation_x: Some(px(x)),
                 };
             }
             _ => cursor,
         };
         CaretMovement {
-            caret: Self::caret_position(moved),
-            preferred_x: None,
+            result: Self::caret_position(moved),
+            vertical_navigation_x: None,
         }
     }
 
@@ -547,13 +548,13 @@ impl PlatformTextLayout for ParleyLayout {
         line_height: Pixels,
         kind: TextSelectionKind,
     ) -> std::ops::Range<usize> {
-        let line_ix = if line_height > Pixels::ZERO && pixel_point.y >= Pixels::ZERO {
+        let line_index = if line_height > Pixels::ZERO && pixel_point.y >= Pixels::ZERO {
             (pixel_point.y / line_height) as usize
         } else {
             0
         };
 
-        let y = self.native_y_for_line(line_ix);
+        let y = self.native_y_for_line(line_index);
         match kind {
             TextSelectionKind::Word => {
                 Selection::word_from_point(&self.layout, pixel_point.x.into(), y)
@@ -785,11 +786,11 @@ impl ParleyTextSystem {
             ))));
         }
 
-        for (run_idx, run) in runs.iter().enumerate() {
+        for (run_index, run) in runs.iter().enumerate() {
             let descriptor = &run.font;
-            let range = run_ranges[run_idx].clone();
+            let range = run_ranges[run_index].clone();
             builder.push(
-                StyleProperty::FontFamily(FontFamily::from(family_lists[run_idx].as_slice())),
+                StyleProperty::FontFamily(FontFamily::from(family_lists[run_index].as_slice())),
                 range.clone(),
             );
             builder.push(
@@ -805,10 +806,10 @@ impl ParleyTextSystem {
                 range.clone(),
             );
 
-            if !feature_lists[run_idx].is_empty() {
+            if !feature_lists[run_index].is_empty() {
                 builder.push(
                     StyleProperty::FontFeatures(FontFeatures::from(
-                        feature_lists[run_idx].as_slice(),
+                        feature_lists[run_index].as_slice(),
                     )),
                     range.clone(),
                 );
@@ -923,7 +924,7 @@ impl ParleyTextSystem {
 
         let mut saw_line = false;
 
-        for (line_idx, line) in layout.lines().enumerate() {
+        for (line_index, line) in layout.lines().enumerate() {
             saw_line = true;
 
             let fragment_start = paint_fragments.len();
@@ -947,7 +948,7 @@ impl ParleyTextSystem {
 
                     positioned_inline_boxes.push(PositionedInlineBox {
                         id: inline_box.id,
-                        line_index: line_idx,
+                        line_index,
                         bounds: Bounds::new(
                             point(px(inline_box.x), px(inline_box.y)),
                             size(px(inline_box.width), px(inline_box.height)),
@@ -1407,14 +1408,14 @@ mod tests {
 
     fn assert_inline_geometry_is_contained(layout: &InlineLayout, width: Pixels) {
         let epsilon = px(0.01);
-        for (line_idx, line) in layout.lines.iter().enumerate() {
+        for (line_index, line) in layout.lines.iter().enumerate() {
             assert!(
                 line.origin.x + line.size.width <= width + epsilon,
-                "line {line_idx} extends past the available width"
+                "line {line_index} extends past the available width"
             );
             assert!(
                 line.origin.y + line.size.height <= layout.size.height + epsilon,
-                "line {line_idx} extends past the layout height"
+                "line {line_index} extends past the layout height"
             );
         }
 
@@ -2053,7 +2054,7 @@ mod tests {
                     Direction::Up.with_boundary(Boundary::VisualLine),
                     None
                 )
-                .caret
+                .result
                 .index,
             0
         );
@@ -2064,7 +2065,7 @@ mod tests {
                     Direction::Down.with_boundary(Boundary::VisualLine),
                     None
                 )
-                .caret
+                .result
                 .index,
             single_line_text.len()
         );
@@ -2099,8 +2100,8 @@ mod tests {
             None,
             line_height,
         );
-        assert!(collapsed_left.selection.is_empty());
-        assert_eq!(collapsed_left.selection.caret, start);
+        assert!(collapsed_left.result.is_empty());
+        assert_eq!(collapsed_left.result.caret, start);
         let collapsed_right = layout.selection_movement(
             selection,
             Direction::Right.with_boundary(Boundary::Cluster),
@@ -2108,7 +2109,7 @@ mod tests {
             None,
             line_height,
         );
-        assert_eq!(collapsed_right.selection.caret, end);
+        assert_eq!(collapsed_right.result.caret, end);
 
         let word = layout.selection_movement(
             start.into(),
@@ -2117,26 +2118,26 @@ mod tests {
             None,
             line_height,
         );
-        assert_eq!(word.selection.anchor, start);
-        assert_ne!(word.selection.caret, start);
+        assert_eq!(word.result.anchor, start);
+        assert_ne!(word.result.caret, start);
         let down = layout.selection_movement(
-            word.selection.caret.into(),
+            word.result.caret.into(),
             Direction::Down.with_boundary(Boundary::VisualLine),
             false,
             None,
             line_height,
         );
-        assert!(down.preferred_x.is_some());
+        assert!(down.vertical_navigation_x.is_some());
         let maintained_x = layout
             .selection_movement(
-                down.selection,
+                down.result,
                 Direction::Down.with_boundary(Boundary::VisualLine),
                 false,
-                down.preferred_x,
+                down.vertical_navigation_x,
                 line_height,
             )
-            .preferred_x;
-        assert_eq!(maintained_x, down.preferred_x);
+            .vertical_navigation_x;
+        assert_eq!(maintained_x, down.vertical_navigation_x);
         let selection = layout.selection_from_pixel_point(
             point(px(12.0), px(10.0)),
             line_height,
